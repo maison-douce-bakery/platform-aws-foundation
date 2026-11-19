@@ -11,11 +11,6 @@ on:
 permissions:
   contents: read
 
-env:
-  TF_IN_AUTOMATION: "true"
-  TF_INPUT: "false"
-  TERRAFORM_VERSION: "1.17.1"
-
 jobs:
   terraform:
     uses: maison-douce-bakery/platform-ci-workflows/.github/workflows/terraform-static.yml@6fb526a6f532e08a00fc4131ecad00042e83c690 # terraform-static/v1.0.0
@@ -23,66 +18,13 @@ jobs:
       directories: bootstrap account-baseline iam-baseline ci-access audit
 
   plan:
-    name: plan (${{ matrix.stack }})
     needs: terraform
-    # Fork PRs get no secrets, so skip them on purpose instead of failing.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        stack: [bootstrap, account-baseline, iam-baseline, ci-access, audit]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
-        with:
-          terraform_version: ${{ env.TERRAFORM_VERSION }}
-          terraform_wrapper: false
-
-      # The access key only allows assuming the plan role. Terraform runs on the role's
-      # short-lived credentials.
-      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
-        with:
-          aws-region: ${{ vars.AWS_REGION }}
-          aws-access-key-id: ${{ secrets.AWS_CI_PLAN_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_CI_PLAN_SECRET_ACCESS_KEY }}
-          role-to-assume: ${{ vars.AWS_CI_PLAN_ROLE_ARN }}
-          role-session-name: gha-${{ github.run_id }}-${{ matrix.stack }}
-          role-duration-seconds: 900
-
-      - name: terraform plan
-        working-directory: ${{ matrix.stack }}
-        env:
-          STACK: ${{ matrix.stack }}
-          EVENT_NAME: ${{ github.event_name }}
-          TF_VAR_alert_emails: ${{ secrets.ALERT_EMAILS }}
-        run: |
-          terraform init -input=false > /dev/null
-
-          set +e
-          terraform plan -input=false -lock-timeout=60s -detailed-exitcode -no-color > plan.txt 2>&1
-          code=$?
-          set -e
-
-          # Public repo: print only the summary and errors, never the full plan.
-          summary=$(grep -E -A3 '^(Plan:|No changes\.|Error:)' plan.txt || true)
-          echo "$summary"
-          {
-            echo "### $STACK"
-            echo '```'
-            echo "$summary"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-          # Exit codes: 0 = no changes, 1 = error, 2 = changes present.
-          if [ "$code" -eq 1 ]; then
-            exit 1
-          fi
-          if [ "$code" -eq 2 ] && [ "$EVENT_NAME" != "pull_request" ]; then
-            echo "::error::Drift detected in $STACK. Live AWS no longer matches main."
-            exit 1
-          fi
+    uses: maison-douce-bakery/platform-ci-workflows/.github/workflows/terraform-plan.yml@14a60ad81ce2b6807c47ecc032dd9deb6c252161 # terraform-plan/v1.0.0
+    with:
+      stacks: '["bootstrap", "account-baseline", "iam-baseline", "ci-access", "audit"]'
+      role_arn: ${{ vars.AWS_CI_PLAN_ROLE_ARN }}
+      aws_region: ${{ vars.AWS_REGION }}
+    secrets:
+      aws_access_key_id: ${{ secrets.AWS_CI_PLAN_ACCESS_KEY_ID }}
+      aws_secret_access_key: ${{ secrets.AWS_CI_PLAN_SECRET_ACCESS_KEY }}
+      tf_vars: alert_emails=${{ secrets.ALERT_EMAILS }}
