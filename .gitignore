@@ -26,4 +26,7 @@ crash.*.log
 # macOS
 .DS_Store
 
+# Private build journal, never published
+.notes/
+
 # KEEP .terraform.lock.hcl: it pins provider versions for every machine and CI
