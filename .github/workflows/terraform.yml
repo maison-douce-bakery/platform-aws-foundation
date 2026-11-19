@@ -1,0 +1,120 @@
+name: terraform
+
+# This repo is applied by admins from their machines. CI only checks and plans.
+on:
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 0 * * 1" # Weekly drift check, Mondays 00:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+  TERRAFORM_VERSION: "1.17.1"
+
+jobs:
+  static:
+    name: static checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: terraform fmt
+        run: terraform fmt -check -recursive -diff
+
+      - name: terraform validate
+        run: |
+          for dir in bootstrap account-baseline iam-baseline ci-access; do
+            echo "::group::$dir"
+            terraform -chdir="$dir" init -backend=false -input=false > /dev/null
+            terraform -chdir="$dir" validate
+            echo "::endgroup::"
+          done
+
+      - uses: terraform-linters/setup-tflint@6ffdbaa3be476b3431f7275c26966ef32ff60337 # v6.3.2
+        with:
+          tflint_version: v0.65.0
+
+      - name: tflint
+        env:
+          GITHUB_TOKEN: ${{ github.token }} # Avoids rate limits when downloading plugins
+        run: |
+          tflint --init --config "$GITHUB_WORKSPACE/.tflint.hcl"
+          tflint --recursive --config "$GITHUB_WORKSPACE/.tflint.hcl"
+
+  plan:
+    name: plan (${{ matrix.stack }})
+    needs: static
+    # Fork PRs get no secrets, so skip them on purpose instead of failing.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        stack: [bootstrap, account-baseline, iam-baseline, ci-access]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      # The access key only allows assuming the plan role. Terraform runs on the role's
+      # short-lived credentials.
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_CI_PLAN_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_CI_PLAN_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ vars.AWS_CI_PLAN_ROLE_ARN }}
+          role-session-name: gha-${{ github.run_id }}-${{ matrix.stack }}
+          role-duration-seconds: 900
+
+      - name: terraform plan
+        working-directory: ${{ matrix.stack }}
+        env:
+          STACK: ${{ matrix.stack }}
+          EVENT_NAME: ${{ github.event_name }}
+          TF_VAR_alert_emails: ${{ secrets.ALERT_EMAILS }}
+        run: |
+          terraform init -input=false > /dev/null
+
+          set +e
+          terraform plan -input=false -lock-timeout=60s -detailed-exitcode -no-color > plan.txt 2>&1
+          code=$?
+          set -e
+
+          # Public repo: print only the summary and errors, never the full plan.
+          summary=$(grep -E -A3 '^(Plan:|No changes\.|Error:)' plan.txt || true)
+          echo "$summary"
+          {
+            echo "### $STACK"
+            echo '```'
+            echo "$summary"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Exit codes: 0 = no changes, 1 = error, 2 = changes present.
+          if [ "$code" -eq 1 ]; then
+            exit 1
+          fi
+          if [ "$code" -eq 2 ] && [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "::error::Drift detected in $STACK. Live AWS no longer matches main."
+            exit 1
+          fi
