@@ -36,7 +36,7 @@ jobs:
 
       - name: terraform validate
         run: |
-          for dir in bootstrap account-baseline iam-baseline ci-access; do
+          for dir in bootstrap account-baseline iam-baseline ci-access audit; do
             echo "::group::$dir"
             terraform -chdir="$dir" init -backend=false -input=false > /dev/null
             terraform -chdir="$dir" validate
@@ -64,7 +64,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        stack: [bootstrap, account-baseline, iam-baseline, ci-access]
+        stack: [bootstrap, account-baseline, iam-baseline, ci-access, audit]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
