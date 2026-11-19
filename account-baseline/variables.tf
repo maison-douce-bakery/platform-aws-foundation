@@ -18,5 +18,5 @@ variable "alert_emails" {
 variable "monthly_limit_usd" {
   description = "Monthly cost budget in USD."
   type        = number
-  default     = 5
+  default     = 20
 }

@@ -1,5 +1,3 @@
 # Copy to terraform.tfvars and fill in real values. terraform.tfvars is gitignored.
+# Keep only secrets here. Non-secret settings live in variables.tf defaults.
 alert_emails = ["you@example.com"]
-
-# Optional, defaults to 5.
-# monthly_limit_usd = 5
