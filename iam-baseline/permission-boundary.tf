@@ -51,24 +51,26 @@ data "aws_iam_policy_document" "workload_boundary" {
     resources = ["*"]
   }
 
-  # State objects stay readable and writable. The bucket and its history are protected.
+  # Bucket settings of the state and audit log buckets can't be changed.
   statement {
-    sid    = "DenyStateBucketChanges"
+    sid    = "DenyProtectedBucketChanges"
     effect = "Deny"
     actions = [
       "s3:DeleteBucket",
       "s3:DeleteBucketPolicy",
       "s3:PutBucketPolicy",
       "s3:PutBucketVersioning",
+      "s3:PutBucketObjectLockConfiguration",
       "s3:PutEncryptionConfiguration",
       "s3:PutLifecycleConfiguration",
       "s3:PutBucketPublicAccessBlock",
       "s3:PutBucketOwnershipControls",
       "s3:PutReplicationConfiguration",
     ]
-    resources = [local.state_bucket_arn]
+    resources = [local.state_bucket_arn, local.log_bucket_arn]
   }
 
+  # State objects stay readable and writable. Their history is protected.
   statement {
     sid       = "DenyStateHistoryDeletion"
     effect    = "Deny"
@@ -76,8 +78,23 @@ data "aws_iam_policy_document" "workload_boundary" {
     resources = ["${local.state_bucket_arn}/*"]
   }
 
+  # Only CloudTrail writes audit logs. Nothing may hide, rewrite or unlock them.
   statement {
-    sid    = "DenyStateKeyChanges"
+    sid    = "DenyAuditLogTampering"
+    effect = "Deny"
+    actions = [
+      "s3:PutObject",
+      "s3:DeleteObject",
+      "s3:DeleteObjectVersion",
+      "s3:PutObjectRetention",
+      "s3:PutObjectLegalHold",
+      "s3:BypassGovernanceRetention",
+    ]
+    resources = ["${local.log_bucket_arn}/*"]
+  }
+
+  statement {
+    sid    = "DenyProtectedKeyChanges"
     effect = "Deny"
     actions = [
       "kms:ScheduleKeyDeletion",
@@ -87,7 +104,37 @@ data "aws_iam_policy_document" "workload_boundary" {
       "kms:DeleteAlias",
       "kms:UpdateAlias",
     ]
-    resources = [data.aws_kms_alias.tfstate.target_key_arn, data.aws_kms_alias.tfstate.arn]
+    resources = [
+      data.aws_kms_alias.tfstate.target_key_arn,
+      data.aws_kms_alias.tfstate.arn,
+      data.aws_kms_alias.audit.target_key_arn,
+      data.aws_kms_alias.audit.arn,
+    ]
+  }
+
+  statement {
+    sid    = "DenyAuditTrailChanges"
+    effect = "Deny"
+    actions = [
+      "cloudtrail:StopLogging",
+      "cloudtrail:DeleteTrail",
+      "cloudtrail:UpdateTrail",
+      "cloudtrail:PutEventSelectors",
+      "cloudtrail:PutInsightSelectors",
+    ]
+    resources = [local.trail_arn]
+  }
+
+  statement {
+    sid    = "DenyCostMonitorChanges"
+    effect = "Deny"
+    actions = [
+      "ce:DeleteAnomalyMonitor",
+      "ce:UpdateAnomalyMonitor",
+      "ce:DeleteAnomalySubscription",
+      "ce:UpdateAnomalySubscription",
+    ]
+    resources = ["*"]
   }
 
   # Account guardrails from account-baseline and iam-baseline.
