@@ -33,7 +33,8 @@ Each folder is a separate stack with its own state. For a fresh account, apply t
 | 2 | `account-baseline/` | Monthly budget, cost anomaly detection, S3/EBS/EC2 security defaults |
 | 3 | `audit/` | CloudTrail, log bucket with Object Lock, log KMS key |
 | 4 | `iam-baseline/` | Password policy, workload permission boundary |
-| 5 | `ci-access/` | CI users and the `plan` / `apply` roles |
+| 5 | `ci-access/` | CI users and the `plan` / `apply` / `push` roles |
+| 6 | `registry/` | ECR repositories for the platform's images |
 
 `bootstrap/` starts with local state, then moves its own state into the bucket it created.
 
@@ -76,6 +77,8 @@ terraform {
 | `AWS_CI_PLAN_ACCESS_KEY_ID`, `AWS_CI_PLAN_SECRET_ACCESS_KEY` | Secret | Access key of `mdb-shared-ci-plan`. It can only assume the plan role |
 | `AWS_CI_PLAN_ROLE_ARN` | Variable | Read-only role for `terraform plan` |
 | `AWS_REGION` | Variable | `ap-southeast-2` |
+| `AWS_CI_PUSH_ACCESS_KEY_ID`, `AWS_CI_PUSH_SECRET_ACCESS_KEY` | Secret | Access key of `mdb-shared-ci-push`. It can only assume the push role |
+| `AWS_CI_PUSH_ROLE_ARN` | Variable | Role that may push images to the `mdb/` repositories |
 
 The apply key is issued when the first repo needs `terraform apply` in CI. It goes into that repo's `production` environment, not into org secrets.
 
