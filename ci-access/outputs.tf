@@ -27,3 +27,13 @@ output "ci_push_role_arn" {
   description = "Role that image push jobs assume."
   value       = aws_iam_role.ci_push.arn
 }
+
+output "ci_deploy_user_name" {
+  description = "IAM user whose access key goes into GitHub for application deployment jobs."
+  value       = aws_iam_user.ci_deploy.name
+}
+
+output "ci_deploy_role_arn" {
+  description = "Role that application deployment jobs assume."
+  value       = aws_iam_role.ci_deploy.arn
+}

@@ -79,6 +79,8 @@ terraform {
 | `AWS_REGION` | Variable | `ap-southeast-2` |
 | `AWS_CI_PUSH_ACCESS_KEY_ID`, `AWS_CI_PUSH_SECRET_ACCESS_KEY` | Secret | Access key of `mdb-shared-ci-push`. It can only assume the push role |
 | `AWS_CI_PUSH_ROLE_ARN` | Variable | Role that may push images to the `mdb/` repositories |
+| `AWS_CI_DEPLOY_ACCESS_KEY_ID`, `AWS_CI_DEPLOY_SECRET_ACCESS_KEY` | Secret | Access key of `mdb-shared-ci-deploy`. It can only assume the deploy role |
+| `AWS_CI_DEPLOY_ROLE_ARN` | Variable | Role that may deploy application ECS services (narrower than `ci-apply`) |
 
 The apply key is issued when the first repo needs `terraform apply` in CI. It goes into that repo's `production` environment, not into org secrets.
 
