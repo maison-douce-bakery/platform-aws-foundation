@@ -161,6 +161,25 @@ data "aws_iam_policy_document" "ci_deploy" {
     actions   = ["sts:GetCallerIdentity"]
     resources = ["*"]
   }
+
+  # Terraform state and its lock file, scoped to this repo's prefix.
+  statement {
+    sid       = "ListStateBucket"
+    actions   = ["s3:ListBucket"]
+    resources = [local.state_bucket_arn]
+  }
+
+  statement {
+    sid       = "ReadWriteDeploymentsState"
+    actions   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+    resources = ["${local.state_bucket_arn}/platform-deployments/*"]
+  }
+
+  statement {
+    sid       = "StateKey"
+    actions   = ["kms:Decrypt", "kms:GenerateDataKey"]
+    resources = [data.aws_kms_alias.tfstate.target_key_arn]
+  }
 }
 
 resource "aws_iam_role_policy" "ci_deploy" {
