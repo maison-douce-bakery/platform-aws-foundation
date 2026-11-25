@@ -35,6 +35,7 @@ Each folder is a separate stack with its own state. For a fresh account, apply t
 | 4 | `iam-baseline/` | Password policy, workload permission boundary |
 | 5 | `ci-access/` | CI users and the `plan` / `apply` / `push` roles |
 | 6 | `registry/` | ECR repositories for the platform's images |
+| 7 | `dns/` | Route 53 public hosted zone `datawithme.qd.je` (nameservers set by hand at the registrar) |
 
 `bootstrap/` starts with local state, then moves its own state into the bucket it created.
 
