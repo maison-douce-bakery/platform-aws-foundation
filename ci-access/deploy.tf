@@ -83,6 +83,7 @@ data "aws_iam_policy_document" "ci_deploy" {
       "iam:AttachRolePolicy",
       "iam:DetachRolePolicy",
       "iam:ListAttachedRolePolicies",
+      "iam:ListInstanceProfilesForRole",
       "iam:PutRolePermissionsBoundary",
     ]
     resources = ["arn:aws:iam::${local.account_id}:role/workload/*"]
@@ -106,7 +107,6 @@ data "aws_iam_policy_document" "ci_deploy" {
     actions = [
       "logs:CreateLogGroup",
       "logs:DeleteLogGroup",
-      "logs:DescribeLogGroups",
       "logs:ListTagsForResource",
       "logs:TagResource",
       "logs:UntagResource",
@@ -116,8 +116,20 @@ data "aws_iam_policy_document" "ci_deploy" {
     resources = ["arn:aws:logs:${var.region}:${local.account_id}:log-group:/ecs/*"]
   }
 
+  # DescribeLogGroups has no resource-level permissions, so the region is the scope.
+  statement {
+    sid       = "DescribeLogGroups"
+    actions   = ["logs:DescribeLogGroups"]
+    resources = ["*"]
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestedRegion"
+      values   = [var.region]
+    }
+  }
+
   # Task security groups and ingress/egress rules. EC2 rarely supports resource-level permissions,
-  # so the scope is the region; the module creates named resources in the dev VPC only.
+  # so the scope is the region; the module creates named resources in the workload VPC only.
   statement {
     sid = "TaskNetworking"
     actions = [
@@ -144,6 +156,7 @@ data "aws_iam_policy_document" "ci_deploy" {
     sid = "LookupSecretsAndKeys"
     actions = [
       "secretsmanager:DescribeSecret",
+      "secretsmanager:GetResourcePolicy",
       "secretsmanager:ListSecrets",
       "kms:DescribeKey",
       "kms:ListAliases",
@@ -154,6 +167,31 @@ data "aws_iam_policy_document" "ci_deploy" {
       variable = "aws:RequestedRegion"
       values   = [var.region]
     }
+  }
+
+  # The shared database instance, read by name.
+  statement {
+    sid       = "LookupDatabase"
+    actions   = ["rds:DescribeDBInstances", "rds:ListTagsForResource"]
+    resources = ["*"]
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestedRegion"
+      values   = [var.region]
+    }
+  }
+
+  # The permissions boundary, read by name and path. ListPolicies has no resource-level scope.
+  statement {
+    sid       = "LookupBoundary"
+    actions   = ["iam:ListPolicies"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid       = "ReadBoundary"
+    actions   = ["iam:GetPolicy", "iam:GetPolicyVersion"]
+    resources = [data.aws_iam_policy.workload_boundary.arn]
   }
 
   statement {
