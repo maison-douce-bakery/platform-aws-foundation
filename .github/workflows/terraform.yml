@@ -15,13 +15,13 @@ jobs:
   terraform:
     uses: maison-douce-bakery/platform-ci-workflows/.github/workflows/terraform-static.yml@6fb526a6f532e08a00fc4131ecad00042e83c690 # terraform-static/v1.0.0
     with:
-      directories: bootstrap account-baseline iam-baseline ci-access audit registry
+      directories: bootstrap account-baseline iam-baseline ci-access audit registry dns
 
   plan:
     needs: terraform
     uses: maison-douce-bakery/platform-ci-workflows/.github/workflows/terraform-plan.yml@14a60ad81ce2b6807c47ecc032dd9deb6c252161 # terraform-plan/v1.0.0
     with:
-      stacks: '["bootstrap", "account-baseline", "iam-baseline", "ci-access", "audit", "registry"]'
+      stacks: '["bootstrap", "account-baseline", "iam-baseline", "ci-access", "audit", "registry", "dns"]'
       role_arn: ${{ vars.AWS_CI_PLAN_ROLE_ARN }}
       aws_region: ${{ vars.AWS_REGION }}
     secrets:
