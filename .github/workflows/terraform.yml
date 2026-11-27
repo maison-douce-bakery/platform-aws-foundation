@@ -1,6 +1,7 @@
 name: terraform
 
 # This repo is applied by admins from their machines. CI only checks and plans.
+# PRs plan the stacks that changed. The weekly and manual runs plan every stack: that is the drift check.
 on:
   pull_request:
     branches: [main]
@@ -12,16 +13,75 @@ permissions:
   contents: read
 
 jobs:
+  # The one ordered list of stacks (dependency order). Selects the stacks a run plans.
+  changes:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      all: ${{ steps.select.outputs.all }}
+      changed: ${{ steps.select.outputs.changed }}
+      directories: ${{ steps.select.outputs.directories }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: select stacks
+        id: select
+        env:
+          STACKS: >-
+            ["bootstrap", "account-baseline", "iam-baseline", "ci-access", "audit", "registry", "dns"]
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          all=$(jq -c . <<< "$STACKS")
+          files=""
+          reason=""
+
+          case "$EVENT" in
+            pull_request)
+              files=$(git diff --name-only "$BASE_SHA" HEAD)
+              ;;
+            *)
+              reason="drift check"
+              ;;
+          esac
+
+          # Shared files affect every stack.
+          if [ -z "$reason" ] && printf '%s\n' "$files" | grep -Eq '^\.github/|(^|/)\.tflint\.hcl$'; then
+            reason="shared files changed"
+          fi
+
+          if [ -n "$reason" ]; then
+            changed="$all"
+          else
+            changed=$(jq -c --arg files "$files" '($files | split("\n")) as $f | map(select(. as $s | any($f[]; startswith($s + "/"))))' <<< "$all")
+          fi
+
+          msg="Stacks selected: $(jq -r 'length' <<< "$changed") of $(jq -r 'length' <<< "$all")${reason:+ ($reason)}: $(jq -r 'join(" ")' <<< "$changed")"
+          echo "$msg"
+          echo "$msg" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "all=$all"
+            echo "changed=$changed"
+            echo "directories=$(jq -r 'join(" ")' <<< "$all")"
+          } >> "$GITHUB_OUTPUT"
+
   terraform:
+    needs: changes
     uses: maison-douce-bakery/platform-ci-workflows/.github/workflows/terraform-static.yml@6fb526a6f532e08a00fc4131ecad00042e83c690 # terraform-static/v1.0.0
     with:
-      directories: bootstrap account-baseline iam-baseline ci-access audit registry dns
+      directories: ${{ needs.changes.outputs.directories }}
 
   plan:
-    needs: terraform
-    uses: maison-douce-bakery/platform-ci-workflows/.github/workflows/terraform-plan.yml@14a60ad81ce2b6807c47ecc032dd9deb6c252161 # terraform-plan/v1.0.0
+    needs: [terraform, changes]
+    uses: maison-douce-bakery/platform-ci-workflows/.github/workflows/terraform-plan.yml@97daa88c12e03323c9d770e1024a163bf9298fee # terraform-plan/v1.1.0
     with:
-      stacks: '["bootstrap", "account-baseline", "iam-baseline", "ci-access", "audit", "registry", "dns"]'
+      stacks: ${{ needs.changes.outputs.all }}
+      changed_stacks: ${{ needs.changes.outputs.changed }}
       role_arn: ${{ vars.AWS_CI_PLAN_ROLE_ARN }}
       aws_region: ${{ vars.AWS_REGION }}
     secrets:

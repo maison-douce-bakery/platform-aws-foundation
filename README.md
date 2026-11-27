@@ -45,14 +45,14 @@ Each folder is a separate stack with its own state. For a fresh account, apply t
 
 1. Create a branch.
 2. In the stack folder, run `terraform plan`, then `terraform apply` with an admin session (`aws login`).
-3. Open a PR. CI runs `fmt`, `validate`, `tflint` and a `plan` per stack. Every plan must show `No changes`, which proves the code matches AWS.
+3. Open a PR. CI runs `fmt`, `validate`, `tflint` on every stack and a `plan` for each changed stack. Every plan must show `No changes`, which proves the code matches AWS.
 4. Merge with rebase.
 
 **Prerequisites:** Terraform 1.17, AWS CLI, GitHub CLI.
 
 **Secrets:** `account-baseline/` needs `alert_emails`. Copy `terraform.tfvars.example` to `terraform.tfvars` locally. CI reads it from the `ALERT_EMAILS` secret. Non-secret settings live in variable defaults, not in tfvars.
 
-**Drift:** a scheduled plan runs every Monday and fails if live AWS no longer matches `main`.
+**Drift:** a scheduled plan of every stack runs every Monday (a manual run does the same) and fails if live AWS no longer matches `main`.
 
 ## Using it from other repos
 
